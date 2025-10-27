@@ -182,6 +182,136 @@ extern pod_satinfo_t *podgetsatinfo(int sat)
     }
     return NULL;
 }
+/* eci/ecsf to ecef transformation matrix -------------------------------------
+ * compute eci to ecef transformation matrix
+ * args   : gtime_t tutc     I   time in utc
+ *          double *erpv     I   erp values {xp,yp,ut1_utc,lod,tai-utc} (rad,rad,s,s/d,s)
+ *          double *U        O   eci to ecef transformation matrix (3 x 3)
+ *          double *dU       O   dot of eci to ecef transformation matrix (3 x 3)
+ *          double *gmst     IO  greenwich mean sidereal time (rad)
+ *                               (NULL: no output)
+ * return : none
+ *-----------------------------------------------------------------------------*/
+extern void ecsf2ecef(gtime_t tutc, const double *erpv, double *U, double *dU, double *gmst)
+{
+    const static double mjd0=2400000.5;
+    static double U_[9],dU_[9],gmst_;
+    static gtime_t tutc_;
+    double mjd_utc,mjd_ut1,mjd_tt;
+    double ep[6],dt[6],T[3][3],I[3][3]={0.0},W[3][3],gast,omg,S[9]={0},Rz[9],O[9],NP[9],PT[9];
+    double corr[6]={0};
+    int i,j;
+
+    if (tutc.time&&fabs(timediff(tutc,tutc_))<0.01) { /* read cache */
+        if (U) matcpy(U,U_,3,3);
+        if (dU) matcpy(dU,dU_,3,3);
+        if (gmst) *gmst=gmst_;
+        return;
+    }
+#if PMUT1_OCEAN_CORR
+    pmut1_ocean(tutc,corr);
+#endif
+    tutc_=tutc;
+    time2epoch(tutc_,ep);
+    mjd_utc=cal2mjd(ep);
+
+    reftimediff(erpv[2]+corr[2],erpv[4],dt);
+    mjd_ut1=mjd_utc+(erpv[2]+corr[2])/86400.0;
+    mjd_tt=mjd_utc+dt[3]/86400.0;
+
+    /* iau precession and nutation */
+    iauPnm06a(mjd0,mjd_tt,T);
+    gast=iauGst06(mjd0,mjd_ut1,mjd0,mjd_tt,T);
+    iauPom00(erpv[0]+corr[0]*AS2R,erpv[1]+corr[1]*AS2R,iauSp00(mjd0,mjd_tt),W);
+
+    /* earth rotation matrix */
+    I[0][0]=I[1][1]=I[2][2]=1.0;
+    iauRz(gast,I);
+    for (i=0;i<3;i++) {
+        for (j=0;j<3;j++) Rz[i+j*3]=I[i][j];
+    }
+    /* derivative of earth rotation matrix */
+    S[1]=-1.0; S[3]=1.0;
+    omg=OMGE-0.843994809*1E-9*(erpv[3]+corr[3]);
+    matmul("NN",3,3,3,omg,S,Rz,0.0,O);
+
+    for (i=0;i<3;i++) {
+        for (j=0;j<3;j++) NP[i+j*3]=T[i][j];
+        for (j=0;j<3;j++) PT[i+j*3]=W[i][j];
+    }
+    matmul("NN",3,3,3,1.0,PT,Rz,0.0,S); /* PT=Ry(-xp)*Rx(-yp) */
+    matmul("NN",3,3,3,1.0,S ,NP,0.0,U_); /* U=PT*Rz(gast)*NP */
+
+    matmul("NN",3,3,3,1.0,PT,O,0.0,S); /* PT=Ry(-xp)*Rx(-yp) */
+    matmul("NN",3,3,3,1.0,S,NP,0.0,dU_); /* dU=PT*O(gast)*NP */
+    gmst_=iauGmst06(mjd0,mjd_ut1,mjd0,mjd_tt);
+
+    if (U) matcpy(U,U_,3,3);
+    if (dU) matcpy(dU,dU_,3,3);
+    if (gmst) *gmst=gmst_;
+
+    log_trace(4,"gmst=%.12f gast=%.12f\n",gmst_,gast);
+}
+extern void ecsf2ecef2(gtime_t tutc, const double *erpv, double *U, double *dU, double *gmst)
+{
+    static double U_[9],dU_[9],gmst_;
+    static gtime_t tutc_;
+    const double mjd0=2400000.5;
+    const double omge=2.0*PI*1.00273781191135448/86400.0;
+    double mjd_utc,mjd_ut1,mjd_tt,ep[6],dt[6],x,y,s,sp,era,dera;
+    double Q[3][3]={0},R[3][3]={0},W[3][3]={0};
+    double Q_[9],R_[9],W_[9],T[9],dR[9]={0},corr[6]={0};
+    int i,j;
+
+    if (tutc.time&&fabs(timediff(tutc,tutc_))<1E-6) { /* read cache */
+        if (U) matcpy(U,U_,3,3);
+        if (dU) matcpy(dU,dU_,3,3);
+        if (gmst) *gmst=gmst_;
+        return;
+    }
+#if PMUT1_OCEAN_CORR
+    pmut1_ocean(tutc,corr);
+#endif
+    time2epoch(tutc,ep);
+    mjd_utc=cal2mjd(ep);
+
+    reftimediff(erpv[2]+corr[2],erpv[4],dt);
+    mjd_ut1=mjd_utc+(erpv[2]+corr[2])/86400.0;
+    mjd_tt=mjd_utc+dt[3]/86400.0;
+
+    iauXy06(mjd0,mjd_tt,&x,&y);
+    s=iauS06(mjd0,mjd_tt,x,y);
+    iauC2ixys(x,y,s,Q);
+    era=iauEra00(mjd0,mjd_ut1);
+
+    R[0][0]=R[1][1]=R[2][2]=1.0;
+    iauRz(era,R);
+    sp=iauSp00(mjd0,mjd_tt);
+    iauPom00(erpv[0]+corr[0]*AS2R,erpv[1]+corr[1]*AS2R,sp,W);
+
+    for (i=0;i<3;i++) {
+        for (j=0;j<3;j++) W_[i+j*3]=W[i][j];
+        for (j=0;j<3;j++) R_[i+j*3]=R[i][j];
+        for (j=0;j<3;j++) Q_[i+j*3]=Q[i][j];
+    }
+    matmul("NN",3,3,3,1.0,W_,R_,0.0,T);
+    matmul("NN",3,3,3,1.0,T,Q_,0.0,U_);
+
+    dera=omge-0.843994809*1E-9*(erpv[3]+corr[3]);
+    dR[0+0*3]=-sin(era)*dera; dR[0+1*3]= cos(era)*dera;
+    dR[1+0*3]=-cos(era)*dera; dR[1+1*3]=-sin(era)*dera;
+
+    matmul("NN",3,3,3,1.0,W_,dR,0.0,T);
+    matmul("NN",3,3,3,1.0,T,Q_,0.0,dU_);
+
+    gmst_=iauGmst06(mjd0,mjd_ut1,mjd0,mjd_tt);
+
+    if (U) matcpy(U,U_,3,3);
+    if (dU) matcpy(dU,dU_,3,3);
+    if (gmst) *gmst=gmst_;
+
+    log_trace(3,"gmst=%.12f\n",gmst_);
+}
 extern void eci2ecef2(gtime_t tutc, const erp_t *erp, double *U, double *dU, double *gmst)
 {
     double erpv[8];
@@ -1201,4 +1331,204 @@ extern int readsnx(const char *file, const char *staname, sol_t *sol)
     }
     fclose(fp);
     return norm(sol->rr,3)>0.0;
+}
+/* add POD observation data --------------------------------------------------*/
+static int addpodobs(podobss_t *obs, const podobs_t *data)
+{
+    podobs_t *obs_data;
+
+    if (obs->nmax<=obs->n) {
+        if (obs->nmax<=0) obs->nmax=1024; else obs->nmax*=2;
+        if (!(obs_data=(podobs_t *)realloc(obs->data,sizeof(podobs_t)*obs->nmax))) {
+            free(obs->data);
+            obs->data=NULL;
+            obs->n=obs->nmax=0;
+            return -1;
+        }
+        obs->data=obs_data;
+    }
+    obs->data[obs->n++]=*data;
+    return 1;
+}
+/* read POD satellite position observation from SP3 file----------------------*/
+extern int readpodobs_sp3(const char **files, int n, podobss_t *obss)
+{
+    double rs[6],dts[2],var,tint=300.0;
+    int i,j,k;
+
+    for (i=0;i<n;i++) {
+        nav_t nav={0};
+
+        readsp3(files[i],&nav,0);
+        uniqnav(&nav);
+
+        for (j=0;j<nav.ne;j++) {
+            for (k=0;k<MAXSAT;k++) {
+                if (!peph2pos(nav.peph[j].time,k+1,&nav,0,rs,dts,&var)) continue;
+                matcpy(nav.peph[j].vel[k],rs+3,1,3);
+            }
+            gtime_t t0={0};
+            if (!screent(nav.peph[j].time,t0,t0,tint)) continue;
+
+            podobs_t obs={0};
+            obs.type=GPOD_OBSS_TYPE_SATPOS;
+            for (k=0;k<MAXSAT;k++) {
+                obs.tutc=gpst2utc(nav.peph[j].time);
+                matcpy(obs.pos[k],nav.peph[j].pos[k],1,3);
+                matcpy(obs.vel[k],nav.peph[j].vel[k],1,3);
+
+                obs.pos[k][3]=SQR(nav.peph[j].std[k][0]?nav.peph[j].std[k][0]:0.05);
+                obs.pos[k][4]=SQR(nav.peph[j].std[k][1]?nav.peph[j].std[k][1]:0.05);
+                obs.pos[k][5]=SQR(nav.peph[j].std[k][2]?nav.peph[j].std[k][2]:0.05);
+                obs.vel[k][3]=SQR(nav.peph[j].vst[k][0]?nav.peph[j].vst[k][0]:0.05);
+                obs.vel[k][4]=SQR(nav.peph[j].vst[k][1]?nav.peph[j].vst[k][1]:0.05);
+                obs.vel[k][5]=SQR(nav.peph[j].vst[k][2]?nav.peph[j].vst[k][2]:0.05);
+            }
+            addpodobs(obss,&obs);
+        }
+        freenav(&nav,0xFF);
+    }
+    return sortpodobs(obss);
+}
+/* compare POD observation data ----------------------------------------------*/
+static int cmppodobs(const void *p1, const void *p2)
+{
+    podobs_t *q1=(podobs_t*)p1,*q2=(podobs_t*)p2;
+    double tt=timediff(q1->tutc,q2->tutc);
+    if (fabs(tt)>DTTOL) return tt<0?-1:1;
+    else return 0;
+}
+/* sort and unique POD observation data---------------------------------------*/
+extern int sortpodobs(podobss_t *obss)
+{
+    int i,j,n;
+
+    if (obss->n<=0) return 0;
+
+    qsort(obss->data,obss->n,sizeof(podobs_t),cmppodobs);
+
+    /* delete duplicated data */
+    for (i=j=0;i<obss->n;i++) {
+        if (timediff(obss->data[i].tutc,obss->data[j].tutc)!=0.0) {
+            obss->data[++j]=obss->data[i];
+        }
+    }
+    obss->n=j+1;
+
+    for (i=n=0;i<obss->n;i=j,n++) {
+        for (j=i+1;j<obss->n;j++) {
+            if (timediff(obss->data[j].tutc,obss->data[i].tutc)>DTTOL) break;
+        }
+    }
+    return n;
+}
+/* read POD satellite code/phase observation from RINEX file------------------*/
+extern int readpodobs_rnx(const char **files, int n, podobss_t *obss)
+{
+    obs_t obsrnxs[MAXRCV]={0};
+    int nepoch[MAXRCV];
+    int i,j,k,ti=30;
+
+    for (i=0;i<n&&i<MAXRCV;i++) {
+        readrnx(files[i],i+1,"",&obsrnxs[i],NULL,&obss->stas[i]);
+        obss->stas[i].staid=i+1;
+        nepoch[i]=sortobs(&obsrnxs[i]);
+    }
+    gtime_t tmin={0};
+    gtime_t tmax={0};
+    for (i=0;i<n;i++) {
+        if (obsrnxs[i].n<=0) continue;
+        if (!tmin.time||timediff(tmin,obsrnxs[i].data[0].time)<0.0) {
+            tmin=obsrnxs[i].data[0].time;
+        }
+        if (!tmax.time||timediff(tmax,obsrnxs[i].data[obsrnxs[i].n-1].time)<0.0) {
+            tmax=obsrnxs[i].data[obsrnxs[i].n-1].time;
+        }
+    }
+    if (!tmin.time) return 0;
+    if (!tmax.time) return 0;
+
+    gtime_t tcur=tmin;
+    for (;;) {
+        if (timediff(tcur,tmax)>0.0) break;
+
+        podobs_t podobs={0};
+
+        for (j=0;j<n;j++) {
+            obsd_t obsd[MAXOBS]={0};
+            int nobs=0;
+
+            for (k=0;k<obsrnxs[j].n;k++) {
+                if (fabs(timediff(obsrnxs[j].data[k].time,tcur))<1E-2) {
+                    obsd[nobs++]=obsrnxs[j].data[k];
+                }
+            }
+            podobs.nobs[j]=nobs;
+            for (k=0;k<nobs;k++) {
+                podobs.obs[j][k]=obsd[k];
+            }
+        }
+        podobs.tutc=gpst2utc(tcur);
+        podobs.type=GPOD_OBSS_TYPE_SATOBS;
+        podobs.nrcv=n;
+        addpodobs(obss,&podobs);
+        tcur=timeadd(tcur,ti);
+    }
+    for (i=0;i<n;i++) freeobs(&obsrnxs[i]);
+    return sortpodobs(obss);
+}
+extern void readpodobs_rnxe(const char **files, int n, podobss_t *obss)
+{
+    int i;
+
+    for (i=0;i<n&&i<GNRCVS;i++) {
+        readrnx(files[i],i+1,"",&obss->obss[i],NULL,&obss->stas[i]);
+        obss->stas[i].staid=i+1;
+        sortobs(&obss->obss[i]);
+    }
+    obss->n=n;
+}
+extern void readpodobs_rnxet(const char **files, int n, podobss_t *obss, gtime_t ts, gtime_t te, double tint)
+{
+    int i;
+
+    for (i=0;i<n&&i<GNRCVS;i++) {
+        readrnxt(files[i],i+1,ts,te,tint,"",&obss->obss[i],NULL,&obss->stas[i]);
+        obss->stas[i].staid=i+1;
+        sortobs(&obss->obss[i]);
+    }
+    obss->n=n;
+}
+/* get POD satellite code/phase observation---------------------------------*/
+extern int podobssget(const podobss_t *obss, gtime_t tc, podobs_t *podobs)
+{
+    int j,k,obsc=0,nrcv=0;
+
+    memset(podobs,0,sizeof(*podobs));
+
+    for (j=0;j<obss->n;j++) {
+        obsd_t obsd[MAXOBS]={0};
+        int nobs=0;
+
+        for (k=0;k<obss->obss[j].n;k++) {
+            if (fabs(timediff(obss->obss[j].data[k].time,tc))<1E-2) {
+                obsd[nobs++]=obss->obss[j].data[k];
+            }
+        }
+        if (nobs<=0) continue;
+        obsc+=nobs;
+
+        podobs->nobs[nrcv]=nobs;
+        podobs->ircv[nrcv]=obss->stas[j].staid;
+        strncpy(podobs->name[nrcv],obss->stas[j].name,4);
+        for (k=0;k<nobs;k++) {
+            podobs->obs[nrcv][k]=obsd[k];
+        }
+        nrcv++;
+    }
+    if (obsc<=0) return 0;
+    podobs->tutc=gpst2utc(tc);
+    podobs->type=GPOD_OBSS_TYPE_SATOBS;
+    podobs->nrcv=nrcv;
+    return 1;
 }

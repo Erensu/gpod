@@ -417,6 +417,13 @@ extern void satforce(force_model_t *fmdl, gtime_t tutc, const erpd_t *erp, const
 extern int satposeci(gtime_t tutc, const erp_t *erp, const double *rs_ecef, double *rs_eci);
 extern int satposecef(gtime_t tutc, const erp_t *erp, const double *rs_eci, double *rs_ecef);
 
+extern int readpodobs_sp3(const char **files, int n, podobss_t *obss);
+extern int readpodobs_rnx(const char **files, int n, podobss_t *obss);
+extern void readpodobs_rnxe(const char **files, int n, podobss_t *obss);
+extern void readpodobs_rnxet(const char **files, int n, podobss_t *obss, gtime_t ts, gtime_t te, double tint);
+extern int sortpodobs(podobss_t *obss);
+extern int podobssget(const podobss_t *obss, gtime_t tc, podobs_t *podobs);
+
 extern int satorbit(int method, satorbit_t *orbit, double dt);
 extern void satorbitinit(satorbit_t *orbit, const force_model_opt_t *opt, const double *x0, gtime_t tutc0);
 extern void satorbitfree(satorbit_t *orbit);
