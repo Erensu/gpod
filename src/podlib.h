@@ -238,6 +238,10 @@ typedef struct force_model {
     int noneedfreespw;
     int noneedfreegry;
     int noneedfreeotm;
+    gravity_model_t **gms;
+    spw_t *spws;
+    oceantide_model_t *otms;
+    erp_t *erps;
 } force_model_t;
 
 typedef struct pod_rcv {
@@ -308,6 +312,7 @@ typedef struct {
     double satprn[GNX];
     double rcvvar[GNRX];
     char navfile[MAXSTRPATH];
+    char navfile2[MAXSTRPATH];
     char clkref[MAXSTRPATH];
     char satantp[MAXSTRPATH];
     char rcvantp[MAXSTRPATH];
@@ -315,6 +320,8 @@ typedef struct {
     char blq[MAXSTRPATH];
     char staposfile[MAXSTRPATH];
     char snxfile[MAXSTRPATH];
+    char obsbinfile[MAXSTRPATH];
+    char stabinfile[MAXSTRPATH];
     int udorbitint;
     int estmode;
     int onlyusecode;
@@ -380,6 +387,7 @@ extern double time2mjdut1(gtime_t tutc, const double *erpv);
 extern int rkf78m(deqfunc func, void *param, const double *y0, double x, double h, double xmax, double tol, double *y, int n);
 extern void ecef2satf(const double *rs, double *E);
 extern void ecsf2ecef(gtime_t tutc, const double *erpv, double *U, double *dU, double *gmst);
+extern void ecsf2ecef2(gtime_t tutc, const double *erpv, double *U, double *dU, double *gmst);
 extern void eci2ecef2(gtime_t tutc, const erp_t *erp, double *U, double *dU, double *gmst);
 extern void satfixed(const double *rsat, const double *rsun, double *ex, double *ey, double *ez);
 extern void satf2ecsf(const double *rsat, const double *rsun, double *E);
@@ -414,6 +422,9 @@ extern void nbpertnforce(gtime_t tutc, const erpd_t *erp, nbody_perturbation_t *
 extern void relattyforce(gtime_t tutc, const erpd_t *erp, const relatvty_mode_t *rt, const double *rs, double *fa, double *dadx, int uddadxmethod);
 extern void satforce(force_model_t *fmdl, gtime_t tutc, const erpd_t *erp, const double *rs, double *fa, double *dadx);
 
+extern double ssrange(gtime_t tutc, const erp_t *erp, double dtr, double dts, const double *rr, const double *rs,
+                      double *rstx, double *rrrx, double *drds);
+
 extern int satposeci(gtime_t tutc, const erp_t *erp, const double *rs_ecef, double *rs_eci);
 extern int satposecef(gtime_t tutc, const erp_t *erp, const double *rs_eci, double *rs_ecef);
 
@@ -425,9 +436,11 @@ extern int sortpodobs(podobss_t *obss);
 extern int podobssget(const podobss_t *obss, gtime_t tc, podobs_t *podobs);
 
 extern int satorbit(int method, satorbit_t *orbit, double dt);
+extern int satorbite(int method, satorbit_t *orbit, double dt, double *x, double *F);
 extern void satorbitinit(satorbit_t *orbit, const force_model_opt_t *opt, const double *x0, gtime_t tutc0);
 extern void satorbitfree(satorbit_t *orbit);
 
+extern void orbintj2(gtime_t tutc, const double *erpv, double dt, const double *x0, double *x, double *Phi);
 extern void orbintj2_U(gtime_t tutc, const double *U, double dt, const double *x0, double *x, double *Phi);
 
 extern void orbitgetx(const satorbit_t *orbit, double *x);
@@ -435,11 +448,15 @@ extern void orbitsetx(const double *x, satorbit_t *orbit);
 
 extern void podinit(pod_t *pod, const pod_opt_t *opt);
 extern void podfree(pod_t *pod);
+extern int podsatposflt(pod_t *pod, int sat, const double *rs, const double *var, gtime_t tutc);
 extern void podsatinit(pod_t *pod, int sat, const double *x0, gtime_t tutc0);
+extern int podsatorbfit(int type, const pod_opt_t *opt, const podobss_t *obss, int sat, const char *solfile);
 extern void podudrcvsnx(pod_t *pod, const sta_t *stas, int nsta, const char *snxfile);
 extern void podsetclkref(pod_t *pod, const char *staname);
 
 extern int podflt(pod_t *pod, const podobs_t *obs);
+extern int podfbcmb(const pod_opt_t *opt, pod_sol_t **sols);
+extern int podfbcmbe(const pod_opt_t *opt, pod_sol_t **sols);
 
 #ifdef __cplusplus
 }

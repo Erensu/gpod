@@ -1213,124 +1213,200 @@ extern int readotfile(const char *file, oceantide_model_t *otmdl)
     }
     fclose(fp); return otmdl->n;
 }
-/* satellite position/velocity in ECI from ECEF-----------------------------*/
-extern int satposeci(gtime_t tutc, const erp_t *erp, const double *rs_ecef, double *rs_eci)
+/* Runge Kutta Fehlberg's embedded 7th and 8th order methods------------------*/
+static void rk(deqfunc func, void *param, const double *y0, int n, double x0, double h, double *y, double *e)
 {
-    double erpv[6],U[9],dU[9];
+    double c_1_11=41.0/840.0;
+    double c6=34.0/105.0;
+    double c_7_8=9.0/35.0;
+    double c_9_10=9.0/280.0;
 
-    /* earth rotation parameter values */
-    geterp(erp,utc2gpst(tutc),erpv);
-    if (norm(erpv,6)<=0.0) return 0;
+    double a2=2.0/27.0;
+    double a3= 1.0/9.0;
+    double a4= 1.0/6.0;
+    double a5=5.0/12.0;
+    double a6= 1.0/2.0;
+    double a7= 5.0/6.0;
+    double a8= 1.0/6.0;
+    double a9= 2.0/3.0;
+    double a10=1.0/3.0;
 
-    /* satellite position/velocity in ECI(m/s) */
-    ecsf2ecef(tutc,erpv,U,dU,NULL);
-    matmul("TN",3,1,3,1.0,U,rs_ecef,0.0,rs_eci);
+    double b31=    1.0/36.0;
+    double b32=    3.0/36.0;
+    double b41=    1.0/24.0;
+    double b43=    3.0/24.0;
+    double b51=   20.0/48.0;
+    double b53=  -75.0/48.0;
+    double b54=   75.0/48.0;
+    double b61=    1.0/20.0;
+    double b64=    5.0/20.0;
+    double b65=    4.0/20.0;
+    double b71= -25.0/108.0;
+    double b74= 125.0/108.0;
+    double b75=-260.0/108.0;
+    double b76= 250.0/108.0;
+    double b81=  31.0/300.0;
+    double b85=  61.0/225.0;
+    double b86=    -2.0/9.0;
+    double b87=  13.0/900.0;
+    double b91=         2.0;
+    double b94=   -53.0/6.0;
+    double b95=  704.0/45.0;
+    double b96=  -107.0/9.0;
+    double b97=   67.0/90.0;
+    double b98=         3.0;
 
-    matmul("TN",3,1,3,1.0,U,rs_ecef+3,0.0,rs_eci+3);
-    matmul("TN",3,1,3,1.0,dU,rs_ecef,1.0,rs_eci+3);
-    return 1;
+    double b10_1=   -91.0/108.0;
+    double b10_4=    23.0/108.0;
+    double b10_5=  -976.0/135.0;
+    double b10_6=    311.0/54.0;
+    double b10_7=    -19.0/60.0;
+    double b10_8=      17.0/6.0;
+    double b10_9=     -1.0/12.0;
+    double b11_1= 2383.0/4100.0;
+    double b11_4=  -341.0/164.0;
+    double b11_5= 4496.0/1025.0;
+    double b11_6=   -301.0/82.0;
+    double b11_7= 2133.0/4100.0;
+    double b11_8=     45.0/82.0;
+    double b11_9=    45.0/164.0;
+    double b11_10=    18.0/41.0;
+    double b12_1=     3.0/205.0;
+    double b12_6=     -6.0/41.0;
+    double b12_7=    -3.0/205.0;
+    double b12_8=     -3.0/41.0;
+    double b12_9=      3.0/41.0;
+    double b12_10=     6.0/41.0;
+    double b13_1=-1777.0/4100.0;
+    double b13_4=  -341.0/164.0;
+    double b13_5= 4496.0/1025.0;
+    double b13_6=   -289.0/82.0;
+    double b13_7= 2193.0/4100.0;
+    double b13_8=     51.0/82.0;
+    double b13_9=    33.0/164.0;
+    double b13_10=    12.0/41.0;
+
+    double errfact=-41.0/840.0;
+    double h2_7=a2*h;
+
+    double *k1=mat(1,n);
+    double *k2=mat(1,n);
+    double *k3=mat(1,n);
+    double *k4=mat(1,n);
+    double *k5=mat(1,n);
+    double *k6=mat(1,n);
+    double *k7=mat(1,n);
+    double *k8=mat(1,n);
+    double *k9=mat(1,n);
+    double *k10=mat(1,n);
+    double *k11=mat(1,n);
+    double *k12=mat(1,n);
+    double *k13=mat(1,n);
+    double *yt=mat(1,n);
+    int i;
+
+    func(x0,y0,k1,param);
+
+    for (i=0;i<n;i++) yt[i]=y0[i]+h2_7*k1[i];
+    func(x0+h2_7,yt,k2,param);
+
+    for (i=0;i<n;i++) yt[i]=y0[i]+h*(b31*k1[i]+b32*k2[i]);
+    func(x0+a3*h,yt,k3,param);
+
+    for (i=0;i<n;i++) yt[i]=y0[i]+h*(b41*k1[i]+b43*k3[i]);
+    func(x0+a4*h,yt,k4,param);
+
+    for (i=0;i<n;i++) yt[i]=y0[i]+h*(b51*k1[i]+b53*k3[i]+b54*k4[i]);
+    func(x0+a5*h,yt,k5,param);
+
+    for (i=0;i<n;i++) yt[i]=y0[i]+h*(b61*k1[i]+b64*k4[i]+b65*k5[i]);
+    func(x0+a6*h,yt,k6,param);
+
+    for (i=0;i<n;i++) yt[i]=y0[i]+h*(b71*k1[i]+b74*k4[i]+b75*k5[i]+b76*k6[i]);
+    func(x0+a7*h,yt,k7,param);
+
+    for (i=0;i<n;i++) yt[i]=y0[i]+h*(b81*k1[i]+b85*k5[i]+b86*k6[i]+b87*k7[i]);
+    func(x0+a8*h,yt,k8,param);
+
+    for (i=0;i<n;i++) yt[i]=y0[i]+h*(b91*k1[i]+b94*k4[i]+b95*k5[i]+b96*k6[i]+b97*k7[i]+b98*k8[i]);
+    func(x0+a9*h,yt,k9,param);
+
+    for (i=0;i<n;i++) yt[i]=y0[i]+h*(b10_1*k1[i]+b10_4*k4[i]+b10_5*k5[i]+b10_6*k6[i]+b10_7*k7[i]+b10_8*k8[i]+b10_9*k9[i]);
+    func(x0+a10*h,yt,k10,param);
+
+    for (i=0;i<n;i++) yt[i]=y0[i]+h*(b11_1*k1[i]+b11_4*k4[i]+b11_5*k5[i]+b11_6*k6[i]+b11_7*k7[i]+b11_8*k8[i]+b11_9*k9[i]+b11_10*k10[i]);
+    func(x0+h,yt,k11,param);
+
+    for (i=0;i<n;i++) yt[i]=y0[i]+h*(b12_1*k1[i]+b12_6*k6[i]+b12_7*k7[i]+b12_8*k8[i]+b12_9*k9[i]+b12_10*k10[i]);
+    func(x0,yt,k12,param);
+
+    for (i=0;i<n;i++) yt[i]=y0[i]+h*(b13_1*k1[i]+b13_4*k4[i]+b13_5*k5[i]+b13_6*k6[i]+b13_7*k7[i]+b13_8*k8[i]+b13_9*k9[i]+b13_10*k10[i]+k12[i]);
+    func(x0+h,yt,k13,param);
+
+    for (i=0;i<n;i++) {
+        y[i]=y0[i]+h*(c_1_11*(k1[i]+k11[i])+c6*k6[i]+c_7_8*(k7[i]+k8[i])+c_9_10*(k9[i]+k10[i]));
+        e[i]=errfact*(k1[i]+k11[i]-k12[i]-k13[i]);
+    }
+    free(k1); free(k2); free(k3);
+    free(k4); free(k5); free(k6);
+    free(k7); free(k8); free(k9);
+    free(k10); free(k11); free(k12);
+    free(k13); free(yt);
 }
-/* satellite position/velocity in ECEF from ECI-----------------------------*/
-extern int satposecef(gtime_t tutc, const erp_t *erp, const double *rs_eci, double *rs_ecef)
+extern int rkf78m(deqfunc func, void *param, const double *y0, double x, double h, double xmax, double tol, double *y, int n)
 {
-    double erpv[6],U[9],dU[9];
+    double minfact=0.125;
+    double maxfact=4.0;
+    double errexp=1.0/7.0,lastint=0.0,h_next=h,*yt0,*yt,*e;
+    int sign=x<xmax?1:-1,i,m=12;
 
-    /* earth rotation parameter values */
-    geterp(erp,utc2gpst(tutc),erpv);
-    if (norm(erpv,6)<=0.0) return 0;
+    yt=mat(1,n); yt0=mat(1,n); e=mat(1,n);
+    matcpy(y,y0,1,n);
+    matcpy(yt0,y0,1,n);
+    tol=tol/fabs(xmax-x);
 
-    /* satellite position/velocity in ECEF(m/s) */
-    ecsf2ecef(tutc,erpv,U,dU,NULL);
-    matmul("NN",3,1,3,1.0,U,rs_eci,0.0,rs_ecef);
-
-    matmul("NN",3,1,3,1.0,U,rs_eci+3,0.0,rs_ecef+3);
-    matmul("NN",3,1,3,1.0,dU,rs_eci,1.0,rs_ecef+3);
-    return 1;
-}
-/* update POD receiver station position from SNX solutions------------------*/
-extern void podudrcvsnx(pod_t *pod, const sta_t *stas, int nsta, const char *snxfile)
-{
-    if (strcmp(snxfile,"")==0) return;
-
-    int i,j;
-    for (i=0;i<nsta;i++) {
-        char staname[8]={0};
-        sol_t snxsol={0};
-
-        if (strcmp(stas[i].name,"")==0) break;
-
-        for (j=0;j<GNRCVS;j++) {
-            strncpy(staname,stas[i].name,4);
-
-            if (strcmp(pod->rcv[j].name,staname)==0) {
-                pod->rcv[j].sta=stas[i];
-                readsnx(snxfile,staname,&snxsol);
-                matcpy(pod->rcv[pod->rcv[j].id-1].pos,snxsol.rr,1,3);
+    while (sign==1?x<xmax:x>xmax) {
+        double scale=1.0,yy;
+        for (i=0;i<m;i++) {
+            rk(func,param,yt0,n,x,sign*h,yt,e);
+            if (norm(e,n)<=1E-16) {
+                scale=maxfact;
                 break;
             }
+            if (norm(yt0,n)<1E-16) yy=tol;
+            else yy=norm(yt0,n);
+            scale=MIN(MAX(0.8*pow((tol*yy/norm(e,n)),errexp),minfact),maxfact);
+
+            if (norm(e,n)<tol*yy) break;
+            h=h*scale;
+            if (sign==1) {
+                if (x+h>xmax) h=xmax-x;
+                else if (x+h*+0.5*h>xmax) h=0.5*h;
+            }
+            else {
+                if (x-h<xmax) h=x-xmax;
+                else if (x-h*-0.5*h<xmax) h=0.5*h;
+            }
+        }
+        if (i>=m) {
+            h_next=h*scale;
+            return 0;
+        }
+        matcpy(yt0,yt,1,n);
+        x=x+sign*h; h=h*scale; h_next=h;
+        if (lastint) break;
+        if (sign==1) {
+            if (x+h>xmax) {lastint=1; h=xmax-x;}
+            else if (x+h*+0.5*h>xmax) {h=0.5*h;}
+        }
+        else {
+            if (x-h<xmax) {lastint=1; h=x-xmax;}
+            else if (x-h*-0.5*h<xmax) {h=0.5*h;}
         }
     }
-}
-/* satellite fixed coordinate to eci transformation matrix -------------------*/
-extern void satf2ecsf(const double *rsat, const double *rsun, double *E)
-{
-    double esun[3],*ex=E,*ey=E+3,*ez=E+6,en;
-
-    esun[0]=rsun[0]-rsat[0];
-    esun[1]=rsun[1]-rsat[1];
-    esun[2]=rsun[2]-rsat[2];
-
-    en=norm(esun,3);
-    esun[0]/=en;
-    esun[1]/=en;
-    esun[2]/=en;
-
-    ez[0]=-rsat[0];
-    ez[1]=-rsat[1];
-    ez[2]=-rsat[2];
-    en=norm(ez,3);
-    ez[0]/=en;
-    ez[1]/=en;
-    ez[2]/=en;
-    cross3(ez,esun,ey);
-
-    en=norm(ey,3);
-    ey[0]/=en;
-    ey[1]/=en;
-    ey[2]/=en;
-    cross3(ey,ez,ex);
-}
-/* read snx solutions----------------------------------------------------------*/
-extern int readsnx(const char *file, const char *staname, sol_t *sol)
-{
-    FILE *fp;
-    sol_t sol0={0};
-
-    *sol=sol0;
-    if (!(fp=fopen(file,"r"))) return 0;
-
-    char buff[1024];
-    int flag=0;
-
-    while (fgets(buff,sizeof(buff),fp)) {
-        if (strstr(buff,"+SOLUTION/ESTIMATE")) flag=1;
-        if (strstr(buff,"-SOLUTION/ESTIMATE")) break;
-
-        if (flag) {
-            char name[8],type[8],pt[8],refep[32],unit[8];
-            double val,std;
-            int n,soln,s;
-
-            if (sscanf(buff,"%d %s %s %s %d %s %s %d %lf %lf\n",&n,type,name,pt,&soln,refep,unit,&s,&val,&std)<8) continue;
-            if (!strstr(name,staname)) continue;
-
-            if      (strstr(type,"STAX")) sol->rr[0]=val,sol->qr[0]=(float)std;
-            else if (strstr(type,"STAY")) sol->rr[1]=val,sol->qr[1]=(float)std;
-            else if (strstr(type,"STAZ")) sol->rr[2]=val,sol->qr[2]=(float)std;
-        }
-    }
-    fclose(fp);
-    return norm(sol->rr,3)>0.0;
+    matcpy(y,yt,1,n);
+    free(yt0); free(yt); free(e);
+    return 1;
 }
 /* add POD observation data --------------------------------------------------*/
 static int addpodobs(podobss_t *obs, const podobs_t *data)
@@ -1531,4 +1607,175 @@ extern int podobssget(const podobss_t *obss, gtime_t tc, podobs_t *podobs)
     podobs->type=GPOD_OBSS_TYPE_SATOBS;
     podobs->nrcv=nrcv;
     return 1;
+}
+/* satellite position/velocity in ECI from ECEF-----------------------------*/
+extern int satposeci(gtime_t tutc, const erp_t *erp, const double *rs_ecef, double *rs_eci)
+{
+    double erpv[6],U[9],dU[9];
+
+    /* earth rotation parameter values */
+    geterp(erp,utc2gpst(tutc),erpv);
+    if (norm(erpv,6)<=0.0) return 0;
+
+    /* satellite position/velocity in ECI(m/s) */
+    ecsf2ecef(tutc,erpv,U,dU,NULL);
+    matmul("TN",3,1,3,1.0,U,rs_ecef,0.0,rs_eci);
+
+    matmul("TN",3,1,3,1.0,U,rs_ecef+3,0.0,rs_eci+3);
+    matmul("TN",3,1,3,1.0,dU,rs_ecef,1.0,rs_eci+3);
+    return 1;
+}
+/* satellite position/velocity in ECEF from ECI-----------------------------*/
+extern int satposecef(gtime_t tutc, const erp_t *erp, const double *rs_eci, double *rs_ecef)
+{
+    double erpv[6],U[9],dU[9];
+
+    /* earth rotation parameter values */
+    geterp(erp,utc2gpst(tutc),erpv);
+    if (norm(erpv,6)<=0.0) return 0;
+
+    /* satellite position/velocity in ECEF(m/s) */
+    ecsf2ecef(tutc,erpv,U,dU,NULL);
+    matmul("NN",3,1,3,1.0,U,rs_eci,0.0,rs_ecef);
+
+    matmul("NN",3,1,3,1.0,U,rs_eci+3,0.0,rs_ecef+3);
+    matmul("NN",3,1,3,1.0,dU,rs_eci,1.0,rs_ecef+3);
+    return 1;
+}
+/* update POD receiver station position from SNX solutions------------------*/
+extern void podudrcvsnx(pod_t *pod, const sta_t *stas, int nsta, const char *snxfile)
+{
+    if (strcmp(snxfile,"")==0) return;
+
+    int i,j;
+    for (i=0;i<nsta;i++) {
+        char staname[8]={0};
+        sol_t snxsol={0};
+
+        if (strcmp(stas[i].name,"")==0) break;
+
+        for (j=0;j<GNRCVS;j++) {
+            strncpy(staname,stas[i].name,4);
+
+            if (strcmp(pod->rcv[j].name,staname)==0) {
+                pod->rcv[j].sta=stas[i];
+                readsnx(snxfile,staname,&snxsol);
+                matcpy(pod->rcv[pod->rcv[j].id-1].pos,snxsol.rr,1,3);
+                break;
+            }
+        }
+    }
+}
+/* satellite fixed coordinate to eci transformation matrix -------------------*/
+extern void satf2ecsf(const double *rsat, const double *rsun, double *E)
+{
+    double esun[3],*ex=E,*ey=E+3,*ez=E+6,en;
+
+    esun[0]=rsun[0]-rsat[0];
+    esun[1]=rsun[1]-rsat[1];
+    esun[2]=rsun[2]-rsat[2];
+
+    en=norm(esun,3);
+    esun[0]/=en;
+    esun[1]/=en;
+    esun[2]/=en;
+
+    ez[0]=-rsat[0];
+    ez[1]=-rsat[1];
+    ez[2]=-rsat[2];
+    en=norm(ez,3);
+    ez[0]/=en;
+    ez[1]/=en;
+    ez[2]/=en;
+    cross3(ez,esun,ey);
+
+    en=norm(ey,3);
+    ey[0]/=en;
+    ey[1]/=en;
+    ey[2]/=en;
+    cross3(ey,ez,ex);
+}
+extern int GIXSAT(pod_t *pod, int sat)
+{
+    return (sat-1)*GNX;
+}
+extern int GIXRCV(pod_t *pod, int rcv)
+{
+    return MAXSAT*GNX+(rcv-1)*GNRX;
+}
+extern int GIXRCV_POS(pod_t *pod, int rcv)
+{
+    return GIXRCV(pod,rcv);
+}
+extern int GIXRCV_CLK(pod_t *pod, int rcv, int sys)
+{
+    return GIXRCV(pod,rcv)+GNRP+sys;
+}
+extern int GIXRCV_CKR(pod_t *pod, int rcv)
+{
+    return GIXRCV(pod,rcv)+GNRP+GNRC;
+}
+extern int GIXRCV_TRP(pod_t *pod, int rcv)
+{
+    return GIXRCV(pod,rcv)+GNRP+GNRC+GNRCR;
+}
+extern int GIXSAT_POS(pod_t *pod, int sat)
+{
+    return GIXSAT(pod,sat);
+}
+extern int GIXSAT_VEL(pod_t *pod, int sat)
+{
+    return GIXSAT(pod,sat)+GNP;
+}
+extern int GIXSAT_SRP(pod_t *pod, int sat, int i)
+{
+    return GIXSAT(pod,sat)+GNP+GNV+i;
+}
+extern int GIXSAT_CLK(pod_t *pod, int sat)
+{
+    return GIXSAT(pod,sat)+GNP+GNV+GNS;
+}
+extern int GIXSAT_CKR(pod_t *pod, int sat)
+{
+    return GIXSAT(pod,sat)+GNP+GNV+GNS+1;
+}
+extern int GIXSAT_BIAS(struct pod *pod, int rcv, int sat) 
+{
+    return MAXSAT*GNX+GNRCVS*GNRX+MAXSAT*(rcv-1)+sat-1;
+}
+extern int GIXDCB(pod_t *pod)
+{
+    return MAXSAT*GNX+GNRCVS*GNRX+MAXSAT*GNRCVS;
+}
+/* read snx solutions----------------------------------------------------------*/
+extern int readsnx(const char *file, const char *staname, sol_t *sol)
+{
+    FILE *fp;
+    sol_t sol0={0};
+
+    *sol=sol0;
+    if (!(fp=fopen(file,"r"))) return 0;
+
+    char buff[1024];
+    int flag=0;
+
+    while (fgets(buff,sizeof(buff),fp)) {
+        if (strstr(buff,"+SOLUTION/ESTIMATE")) flag=1;
+        if (strstr(buff,"-SOLUTION/ESTIMATE")) break;
+
+        if (flag) {
+            char name[8],type[8],pt[8],refep[32],unit[8];
+            double val,std;
+            int n,soln,s;
+
+            if (sscanf(buff,"%d %s %s %s %d %s %s %d %lf %lf\n",&n,type,name,pt,&soln,refep,unit,&s,&val,&std)<8) continue;
+            if (!strstr(name,staname)) continue;
+
+            if      (strstr(type,"STAX")) sol->rr[0]=val,sol->qr[0]=(float)std;
+            else if (strstr(type,"STAY")) sol->rr[1]=val,sol->qr[1]=(float)std;
+            else if (strstr(type,"STAZ")) sol->rr[2]=val,sol->qr[2]=(float)std;
+        }
+    }
+    fclose(fp);
+    return norm(sol->rr,3)>0.0;
 }

@@ -1,10 +1,9 @@
 #include "src/podlib.h"
-
-extern void openmatlib();
+#include "../../lib/openblas/cblas.h"
 
 int main(int argc, const char *argv[])
 {
-    openmatlib();
+    openblas_set_num_threads(0);
 
     const char *eopfile="data\\model\\EOP-All.txt";
     const char *spwfile="data\\model\\SW-All.txt";
