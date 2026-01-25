@@ -28,7 +28,7 @@ else()
 endif()
 
 add_library(gpod ${SRC_GPOD})
-target_link_libraries(gpod ${LIBS} m openblas gsl sofa nrlmsise pthread odeint)
+target_link_libraries(gpod ${LIBS} m openblas gsl sofa nrlmsise pthread odeint gfortran quadmath)
 
 add_executable(test_podflt test_podflt.c)
 target_link_libraries(test_podflt gpod)
