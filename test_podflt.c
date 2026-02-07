@@ -14,9 +14,9 @@ int main(int argc, const char *argv[])
     const char *navfile="data\\nav\\BRDC00IGS_R_20201870000_01D_MN.rnx";
     const char *navfile1="data\\nav\\BRDC00IGS_R_20201880000_01D_MN.rnx";
     const char *sp3file[3]={
-            "D:\\data\\nav\\igs21130.sp3",
-            "D:\\data\\nav\\igs21131.sp3",
-            "D:\\data\\nav\\igs21132.sp3"
+            "data\\nav\\igs21130.sp3",
+            "data\\nav\\igs21131.sp3",
+            "data\\nav\\igs21132.sp3"
     };
     char *solfile="pode.sol";
     const char *obsbinfile="data\\obs\\podobs_2020187.bin";
