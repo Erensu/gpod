@@ -1,24 +1,26 @@
 # gpod
 POD (precise orbit determination) of GNSS satellites
 
-# 简介
-支持GPS/BDS/GLONASS/GALILEO精密定轨，精度厘米级
+# Overview
+Supports precise orbit determination for GPS, BDS, GLONASS, and GALILEO, with centimeter-level accuracy.
 
-测试数据在百度云盘（125个全球IGS站）：链接: https://pan.baidu.com/s/15ZHs17U9rzWYmUXBbEvZwQ 提取码: ywaw
+Test data is available on Baidu Netdisk (125 global IGS stations):
+Link: https://pan.baidu.com/s/15ZHs17U9rzWYmUXBbEvZwQ
+Access code: ywaw
 
-编译环境：Windows 10+Intel Core i5-12500H(2.50 GHz)+CLion 2025.1.1+MinGW-64
+Build environment: Windows 10 + Intel Core i5-12500H (2.50 GHz) + CLion 2025.1.1 + MinGW-64
 
-# 参考
+# References
 [1] http://www.rtklib.com
 
 [2] http://www.rtcm.org
 
 [3] http://software.rtcm-ntrip.org
 
-# 联系
-QQ ：1971129844，苏景岚
+# Contact
+QQ: 1971129844, Su Jinglan
 
-Email：1971129844@qq.com
+Email: 1971129844@qq.com
 
-# 备注
-若对专业版源码有需求可咨询作者
+# Note
+If you need the source code of the professional version, please contact the author.
